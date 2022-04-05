@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+import threading
 import websockets
 from typing import Tuple
 
@@ -9,30 +11,21 @@ from src.models.Block import Block
 
 class Client:
 
-    MAX_CHUNK_SIZE = 100
-    MINUTE_TO_MILLISECONDS = 60000
+    MAX_BLOCKS = 100
+    MINUTE_TO_SECONDS = 60
 
     def __init__(self) -> None:
-        self.block        = Block()
-        self.blocks       = []
-        self.milliseconds = 0
+        self.blocks     = [ Block() for _ in range(self.MAX_BLOCKS) ]
+        self.start_time = None
+        self.processing = False
 
     def extract_data(self, response: str) -> Tuple[int, int]:
         data = json.loads(response)
 
-        index = data.get('a')
+        index  = data.get('a')
         number = data.get('b')
 
-        self.block.process(index, number)
-
         return (index, number)
-
-    def verify_chunk_size(self, index: int) -> Client:
-        if index == self.MAX_CHUNK_SIZE:
-            self.blocks.append(self.block)
-            self.block = Block()
-
-        return self
 
     def print_blocks(self):
         text = 'Start info from last minute'
@@ -45,20 +38,40 @@ class Client:
         text = 'Finish info from last minute'
         print(text.center(50, '-'))
 
-    def verify_elapsed_time(self) -> Client:
-        if self.milliseconds % self.MINUTE_TO_MILLISECONDS == 0:
-            self.print_blocks()
-
-            self.blocks = []
+    def reset_blocks(self) -> Client:
+        for block in self.blocks:
+            block.__dict__ = Block().__dict__
 
         return self
 
-    def process(self, response: str) -> None:
+    def verify_elapsed_time(self) -> Client:
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time
+
+        if elapsed_time > self.MINUTE_TO_SECONDS:
+            while self.processing:
+                ...
+
+            self.print_blocks()
+
+            self.start_time = current_time
+
+            self.reset_blocks()
+
+        return self
+
+    def process(self, response: str) -> threading.Thread:
         index, number = self.extract_data(response)
 
-        self.verify_chunk_size(index)
+        block = self.blocks[index - 1]
 
         self.verify_elapsed_time()
+
+        thread = threading.Thread(target = block.process, args = (number, self))
+
+        thread.start()
+
+        return thread
 
     async def run(self):
         url = 'ws://209.126.82.146:8080'
@@ -68,12 +81,9 @@ class Client:
             print('Conected.')
             print('Waiting for the first minute...')
 
-            self.milliseconds = 1
+            self.start_time = time.time()
 
             while True:
                 response = await websocket.recv()
 
-                # threading.Thread(target=self.extract_data, args=(response,)).start()
                 self.process(response)
-
-                self.milliseconds += 1
