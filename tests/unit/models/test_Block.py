@@ -2,6 +2,7 @@ import math
 from random import randint
 
 from src.models.Block import Block
+from src.models.Client import Client
 
 
 class TestBlock:
@@ -20,14 +21,11 @@ class TestBlock:
     def test_is_first_number(self):
         block = Block()
 
-        assert block.is_first_number(1) == True
-        assert block.is_first_number(randint(2, 100)) == False
+        assert block.is_first_number() == True
 
-    def test_is_last_number(self):
-        block = Block()
+        block.first_number = randint(1, 100)
 
-        assert block.is_last_number(100) == True
-        assert block.is_last_number(randint(1, 99)) == False
+        assert block.is_first_number() == False
 
     def test_is_min_number(self):
         block = Block()
@@ -58,35 +56,39 @@ class TestBlock:
 
     def test_process(self):
         block = Block()
+        client = Client()
 
-        block = block.process(1, 10)
+        block = block.process(10, client)
         assert block.max_number == 10
         assert block.min_number == 10
         assert block.first_number == 10
-        assert block.last_number == None
+        assert block.last_number == 10
         assert block.number_of_prime_numbers == 0
         assert block.number_of_even_numbers == 1
         assert block.number_of_odd_numbers == 0
+        assert client.processing == False
 
-        block = block.process(25, 3)
+        client.processing = True
+        block = block.process(3, client)
         assert block.max_number == 10
         assert block.min_number == 3
         assert block.first_number == 10
-        assert block.last_number == None
+        assert block.last_number == 3
         assert block.number_of_prime_numbers == 1
         assert block.number_of_even_numbers == 1
         assert block.number_of_odd_numbers == 1
+        assert client.processing == False
 
-        block = block.process(50, 8)
+        block = block.process(8, client)
         assert block.max_number == 10
         assert block.min_number == 3
         assert block.first_number == 10
-        assert block.last_number == None
+        assert block.last_number == 8
         assert block.number_of_prime_numbers == 1
         assert block.number_of_even_numbers == 2
         assert block.number_of_odd_numbers == 1
 
-        block = block.process(100, 2)
+        block = block.process(2, client)
         assert block.max_number == 10
         assert block.min_number == 2
         assert block.first_number == 10
