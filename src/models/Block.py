@@ -27,8 +27,7 @@ class Block:
     def is_odd_number(self, number: int) -> bool:
         return True if number % 2 else False
 
-    def process(self, number: int, client) -> Block:
-        client.processing = True
+    def process(self, number: int, thread_name: str, client) -> Block:
 
         self.last_number = number
 
@@ -49,6 +48,8 @@ class Block:
         else:
             self.number_of_even_numbers += 1
 
-        client.processing = False
+        client.thread_finished.set()
+
+        del(client.threads[thread_name])
 
         return self
