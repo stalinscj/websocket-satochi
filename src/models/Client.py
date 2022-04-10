@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import time
 import websockets
-from typing import List, Tuple
+from typing import Tuple
+from collections import deque
 from threading import Event, Thread
 
 from src.models.Block import Block
@@ -15,6 +16,8 @@ class Client:
     MAX_BLOCKS        = 100
     MINUTE_TO_SECONDS = 60
     QUEUE_PREFIX_NAME = 'queue_'
+    HOST              = '209.126.82.146'
+    PORT              = 8080
 
     def __init__(self, host: str = None, port: int = None) -> None:
         self.blocks  = [ Block() for _ in range(self.MAX_BLOCKS) ]
@@ -23,12 +26,13 @@ class Client:
         self.dequeues_counter  = self.create_dequeues_counter()
 
         self.enqueued          = Event()
+        self.queues_idle       = Event()
         self.thread_finished   = Event()
         self.blocks_rebooted   = Event()
         self.waiting_for_reset = False
 
-        self.host = host or '209.126.82.146'
-        self.port = port or 8080
+        self.host = host or self.HOST
+        self.port = port or self.PORT
 
     def create_queues(self):
         queues = {}
@@ -36,7 +40,7 @@ class Client:
         for i in range(1, self.MAX_BLOCKS + 1):
             queue_name = self.QUEUE_PREFIX_NAME + str(i)
 
-            queues[queue_name] = []
+            queues[queue_name] = deque()
 
         return queues
 
@@ -90,7 +94,7 @@ class Client:
         while True:
             time.sleep(self.MINUTE_TO_SECONDS)
 
-            self.waiting_for_reset = True
+            self.blocks_rebooted.clear()
 
             self.wait_threads_finished()
 
@@ -98,15 +102,16 @@ class Client:
 
             self.reset_blocks()
 
-            self.waiting_for_reset = False
-
-    def enqueue(self, index: int, number: int) -> List[Tuple[int, int]]:
+    def enqueue(self, index: int, number: int) -> deque[Tuple[int, int]]:
         queue_name = self.QUEUE_PREFIX_NAME + str(index)
+
+        self.queues_idle.wait()
 
         queue = self.queues.get(queue_name)
 
         queue.append((index, number))
 
+        self.queues_idle.set()
         self.enqueued.set()
 
         return queue
@@ -118,29 +123,45 @@ class Client:
 
 
     def are_queues_empty(self) -> bool:
+        empty = True
+
+        self.queues_idle.wait()
+
         for queue in self.queues.values():
             if len(queue) > 0:
-                return False
+                empty = False
+                break
 
-        return True
+        self.queues_idle.set()
 
-    def get_queue_to_process(self) -> List[Tuple[int, int]] | None:
+        return empty
+
+    def get_queue_to_process(self) -> deque[Tuple[int, int]] | None:
         queue_names = sorted(self.dequeues_counter, key=self.dequeues_counter.get)
+
+        queue_to_process = None
 
         for queue_name in queue_names:
 
             if not queue_name in self.threads:
+                self.queues_idle.wait()
+
                 queue = self.queues[queue_name]
 
                 if len(queue) > 0:
-                    return queue
+                    queue_to_process = queue
+                    break
 
-        return None
+        self.queues_idle.set()
 
-    def dequeue(self, queue: List[Tuple[int, int]]) -> Tuple(int, int):
-        index, number = queue[0]
+        return queue_to_process
 
-        del(queue[0])
+    def dequeue(self, queue: deque[Tuple[int, int]]) -> Tuple(int, int):
+        self.queues_idle.wait()
+
+        index, number = queue.popleft()
+
+        self.queues_idle.set()
 
         queue_name = self.QUEUE_PREFIX_NAME + str(index)
 
@@ -175,9 +196,7 @@ class Client:
             if len(self.threads) >= self.MAX_THREADS:
                 self.thread_finished.wait()
 
-            if self.waiting_for_reset:
-                self.blocks_rebooted.wait()
-                self.blocks_rebooted.clear()
+            self.blocks_rebooted.wait()
 
             queue = self.get_queue_to_process()
 
@@ -195,6 +214,9 @@ class Client:
         async with websockets.connect(url, ping_interval = None) as websocket:
             print('Conected.')
             print('Waiting for the first minute...')
+
+            self.blocks_rebooted.set()
+            self.queues_idle.set()
 
             Thread(target = self.worker).start()
             Thread(target = self.print_reset_worker).start()

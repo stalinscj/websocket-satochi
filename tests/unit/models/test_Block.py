@@ -58,7 +58,10 @@ class TestBlock:
         block = Block()
         client = Client()
 
-        block = block.process(10, client)
+        for i in range(4):
+            client.threads['thread_'+str(i)] = None
+
+        block = block.process(10, 'thread_0', client)
         assert block.max_number == 10
         assert block.min_number == 10
         assert block.first_number == 10
@@ -66,10 +69,8 @@ class TestBlock:
         assert block.number_of_prime_numbers == 0
         assert block.number_of_even_numbers == 1
         assert block.number_of_odd_numbers == 0
-        assert client.processing == False
 
-        client.processing = True
-        block = block.process(3, client)
+        block = block.process(3,  'thread_1',client)
         assert block.max_number == 10
         assert block.min_number == 3
         assert block.first_number == 10
@@ -77,9 +78,8 @@ class TestBlock:
         assert block.number_of_prime_numbers == 1
         assert block.number_of_even_numbers == 1
         assert block.number_of_odd_numbers == 1
-        assert client.processing == False
 
-        block = block.process(8, client)
+        block = block.process(8,  'thread_2',client)
         assert block.max_number == 10
         assert block.min_number == 3
         assert block.first_number == 10
@@ -88,7 +88,7 @@ class TestBlock:
         assert block.number_of_even_numbers == 2
         assert block.number_of_odd_numbers == 1
 
-        block = block.process(2, client)
+        block = block.process(2,  'thread_3',client)
         assert block.max_number == 10
         assert block.min_number == 2
         assert block.first_number == 10
